@@ -9,6 +9,7 @@ spec:
   containers:
   - image: kett/web:v1
     name: testpod
+    imagePullPolicy: IfNotPresent
     resources: {}
   dnsPolicy: ClusterFirst
   restartPolicy: Always
