@@ -1,61 +1,76 @@
-podTemplate(label: 'docker-build', 
-  containers: [
-    containerTemplate(
-      name: 'git',
-      image: 'alpine/git',
-      command: 'cat',
-      ttyEnabled: true
-    ),
-    containerTemplate(
-      name: 'docker',
-      image: 'docker',
-      command: 'cat',
-      ttyEnabled: true
-    ),
-  ],
-  volumes: [ 
-    hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock'), 
-  ]
-) {
-    node('docker-build') {
-        def dockerHubCred = dockerCred('kett', 'helldie1!')
-        def appImage
-        
-        stage('Checkout'){
-            container('git'){
-                checkout scm
-            }
-        }
-        
-        stage('Build'){
-            container('docker'){
-                script {
-                    appImage = docker.build("<kett>/node-hello-world")
-                }
-            }
-        }
-        
-        stage('Test'){
-            container('docker'){
-                script {
-                    appImage.inside {
-                        sh 'npm install'
-                        sh 'npm test'
-                    }
-                }
-            }
-        }
-
-        stage('Push'){
-            container('docker'){
-                script {
-                    docker.withRegistry('https://registry.hub.docker.com', dockerHubCred){
-                        appImage.push("${env.BUILD_NUMBER}")
-                        appImage.push("latest")
-                    }
-                }
-            }
-        }
+pipeline {
+  agent {
+    kubernetes {
+      label 'jenkins-slave'
+      defaultContainer 'jnlp'
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: dind
+    image: docker:18.09-dind
+    securityContext:
+      privileged: true
+  - name: docker
+    env:
+    - name: DOCKER_HOST
+      value: 127.0.0.1
+    image: docker:18.09
+    command:
+    - cat
+    tty: true
+  - name: tools
+    image: argoproj/argo-cd-ci-builder:v0.13.1
+    command:
+    - cat
+    tty: true
+"""
     }
-    
+  }
+  stages {
+
+    stage('Build') {
+      environment {
+        DOCKERHUB_CREDS = credentials('kettdocker')
+      }
+      steps {
+        container('docker') {
+          // Build new image
+          sh "until docker ps; do sleep 3; done && docker build -t alexmt/argocd-demo:${env.GIT_COMMIT} ."
+          // Publish new image
+          sh "docker login --username $DOCKERHUB_CREDS_USR --password $DOCKERHUB_CREDS_PSW && docker push alexmt/argocd-demo:${env.GIT_COMMIT}"
+        }
+      }
+    }
+
+    stage('Deploy E2E') {
+      environment {
+        GIT_CREDS = credentials('songmozzi')
+      }
+      steps {
+        container('tools') {
+          sh "git clone https://$GIT_CREDS_USR:$GIT_CREDS_PSW@github.com/alexmt/argocd-demo-deploy.git"
+          sh "git config --global user.email 'ci@ci.com'"
+
+          dir("argocd-demo-deploy") {
+            sh "cd ./e2e && kustomize edit set image alexmt/argocd-demo:${env.GIT_COMMIT}"
+            sh "git commit -am 'Publish new version' && git push || echo 'no changes'"
+          }
+        }
+      }
+    }
+
+    stage('Deploy to Prod') {
+      steps {
+        input message:'Approve deployment?'
+        container('tools') {
+          dir("argocd-demo-deploy") {
+            sh "cd ./prod && kustomize edit set image alexmt/argocd-demo:${env.GIT_COMMIT}"
+            sh "git commit -am 'Publish new version' && git push || echo 'no changes'"
+          }
+        }
+      }
+    }
+  }
 }
