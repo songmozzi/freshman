@@ -1,43 +1,61 @@
-pipeline {
-    agent any
-    
-    environment {
-        registryCredential = 'kettdocker' // Credential ID 입력
-        tag = "latest" // 태그 이름 입력
-    }
-    
-    stages {
-        stage('Cloning Git') {
-            steps {
-                git branch: 'main', url: 'https://github.com/songmozzi/freshman.git'
+podTemplate(label: 'docker-build', 
+  containers: [
+    containerTemplate(
+      name: 'git',
+      image: 'alpine/git',
+      command: 'cat',
+      ttyEnabled: true
+    ),
+    containerTemplate(
+      name: 'docker',
+      image: 'docker',
+      command: 'cat',
+      ttyEnabled: true
+    ),
+  ],
+  volumes: [ 
+    hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock'), 
+  ]
+) {
+    node('docker-build') {
+        def dockerHubCred = dockerCred('kett', 'helldie1!')
+        def appImage
+        
+        stage('Checkout'){
+            container('git'){
+                checkout scm
             }
         }
         
-        stage('Building Docker Image') {
-            steps {
+        stage('Build'){
+            container('docker'){
                 script {
-                    docker.withRegistry('https://hub.docker.com/repository/docker/kett/jenkins', registryCredential) {
-                        def customImage = docker.build("kett/jenkins:${tag}", ".")
-                    }
+                    appImage = docker.build("<kett>/node-hello-world")
                 }
             }
         }
         
-        stage('Pushing Docker Image') {
-            steps {
+        stage('Test'){
+            container('docker'){
                 script {
-                    docker.withRegistry('https://hub.docker.com/repository/docker/kett/jenkins', registryCredential) {
-                        def customImage = docker.build("kett/jenkins:${tag}", ".")
-                        customImage.push()
+                    appImage.inside {
+                        sh 'npm install'
+                        sh 'npm test'
                     }
                 }
             }
         }
-        
-        stage('Cleanup') {
-            steps {
-                sh "docker rmi kett/jenkins:${tag}"
+
+        stage('Push'){
+            container('docker'){
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', dockerHubCred){
+                        appImage.push("${env.BUILD_NUMBER}")
+                        appImage.push("latest")
+                    }
+                }
             }
         }
     }
+    
 }
