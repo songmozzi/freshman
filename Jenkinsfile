@@ -5,7 +5,7 @@ pipeline {
                 dir 'build'
                 label 'my-defined-label'
                 registryUrl 'https://hub.docker.com/repository/docker/kett/jenkins/general'
-                registryCredentialsId 'jh'
+                registryCredentialsId 'kettdocker'
         }
     }
     environment {
