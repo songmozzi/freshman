@@ -3,7 +3,7 @@ kind: Pod
 metadata:
   creationTimestamp: null
   labels:
-    run: testpod
+    app: testpod
   name: testpod
 spec:
   containers:
