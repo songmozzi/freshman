@@ -16,8 +16,7 @@ spec:
     spec:
       containers:
         - name: basic-container
-          image: ghcr.io/c1t1d0s7/go-myweb:v3.0
+          image: jeongjaeha/aws:1.2
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
-
