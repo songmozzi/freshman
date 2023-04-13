@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: basic-container
-          image: jeongjaeha/aws:1.2
+          image: kett/web:v1
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
